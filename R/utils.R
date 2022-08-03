@@ -150,3 +150,28 @@ utils::globalVariables(
     "formula"
   )
 )
+
+#' @title localize data
+#'
+#' @description Prepares data for internal use by ENW functions
+#'
+#' @param data, an object coerceable via [data.table::as.data.table()]
+#'
+#' @return a `data.table`, with distinct reference is `data` argument was already a `data.table`,
+#' keyed on `reference_date`
+localizer <- function(data, datecols = c("reference_date", "report_date")) {
+
+  ret <- data |> as.data.table()
+
+  # TODO more generic error message
+  stopifnot(
+    "`data` must have columns 'reference_date', 'report_date'" =
+    length(intersect(colnames(ret), datecols)) == length(datecols)
+  )
+
+  # TODO replace w/ 1.14.3 syntax when available
+  return({ ret |> data.table::copy() }[,
+    c(datecols) := .SD |> lapply(as.IDate), .SDcols = datecols
+  ] |> setkey(reference_date))
+}
+
