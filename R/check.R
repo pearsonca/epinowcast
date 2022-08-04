@@ -97,3 +97,30 @@ check_module <- function(module) {
   }
   return(invisible(NULL))
 }
+
+#' Check a data has required columns
+#'
+#' @param obs an object with [colnames()] defined.
+#' @param cols character vector, the required columns
+#'
+#' TODO: class check?
+#' TODO: forbidden columns? could consolidate this & check_group
+#'
+#' @return NULL
+#'
+#' @family check
+check_cols <- function(obs, cols) {
+  if (length(intersect(colnames(obs), cols)) != length(cols)) {
+    obsarg <- deparse(substitute(obs))
+    colsarg <- deparse(substitute(cols))
+    stop(sprintf(
+      "`obs` (%s) must have `cols` (%s) {%s}; {%s} does not contain {%s}.",
+      obsarg, colsarg,
+      paste(cols, collapse = ", "),
+      paste(colnames(obs), collapse = ", "),
+      paste(setdiff(cols, colnames(obs)), collapse = ", ")
+    ))
+  }
+  return(invisible(NULL))
+}
+
