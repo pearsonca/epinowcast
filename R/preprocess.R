@@ -142,11 +142,11 @@ enw_assign_group <- function(obs, by = c()) {
 #' @family preprocess
 #' @export
 #' @importFrom data.table as.data.table copy
-enw_add_delay <- function(obs) {
-  obs <- check_dates(obs)
-  obs[, delay := as.numeric(report_date - reference_date)]
-  return(obs = obs[])
-}
+enw_add_delay <- function(
+  obs
+) return(localizer(obs)[,
+  delay := as.numeric(report_date - reference_date)
+][])
 
 #' @title FUNCTION_TITLE
 #' @description FUNCTION_DESCRIPTION
@@ -168,6 +168,16 @@ enw_add_max_reported <- function(obs) {
   obs[is.na(reference_date), max_confirm := confirm]
   obs[, cum_prop_reported := confirm / max_confirm]
   return(obs[])
+}
+
+# TODO combined filter reference / report dates
+enw_filter_dates <- function(
+  obs,
+  earliest_date, include_days,
+  latest_date, remove_days,
+  datecol
+) {
+
 }
 
 #' Filter by report dates
@@ -195,15 +205,18 @@ enw_add_max_reported <- function(obs) {
 #' # Filter by days
 #' enw_filter_report_dates(germany_covid19_hosp, remove_days = 10)
 enw_filter_report_dates <- function(obs, latest_date, remove_days) {
-  filt_obs <- check_dates(obs)
-  if (!missing(remove_days)) {
-    if (!missing(latest_date)) {
-      stop("`remove_days` and `latest_date` can't both be specified.")
+  if (xor(!missing(remove_days), !missing(remove_days))) {
+    filt_obs <- localizer(obs)
+    if (missing(latest_date)) {
+      latest_date <- filt_obs[, max(report_date) - remove_days ]
     }
-    latest_date <- max(filt_obs$report_date) - remove_days
+    return(filt_obs[report_date <= as.Date(latest_date)][])
+  } else {
+    if (missing(remove_days) && missing(remove_days)) {
+      stop("at least one of `remove_days` and `latest_date` must be specified.")
+    } else stop("`remove_days` and `latest_date` can't both be specified.")
   }
-  filt_obs <- filt_obs[report_date <= as.Date(latest_date)]
-  return(filt_obs[])
+
 }
 
 #' Filter by reference dates

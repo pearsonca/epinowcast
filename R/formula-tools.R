@@ -40,7 +40,7 @@
 enw_manual_formula <- function(data, fixed = c(), random = c(),
                                custom_random = c(), no_contrasts = FALSE,
                                add_intercept = TRUE) {
-  data <- data.table::copy(data)
+  data <- localizer(data)
   if (add_intercept) {
     form <- c("1")
   } else {
@@ -522,7 +522,7 @@ construct_re <- function(re, data) {
 #' # Model defined without a sparse fixed effects design matrix
 #' enw_formula(~1, data[1:20, ])
 enw_formula <- function(formula, data, sparse = TRUE) {
-  data <- data.table::as.data.table(data)
+  data <- localizer(data)
 
   # Parse formula
   parsed_formula <- parse_formula(formula)
