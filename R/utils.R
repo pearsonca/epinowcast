@@ -156,22 +156,47 @@ utils::globalVariables(
 #' @description Prepares data for internal use by ENW functions
 #'
 #' @param data, an object coerceable via [data.table::as.data.table()]
+#' @param cols, the required columns
+#' @param xform, function or list of transforms to perform on columns; either:
+#'  * `NULL`: no transformation
+#'  * `length(xform) == 1`: applied to all `cols` (n.b. this is `TRUE` for function e.g. `xform = as.numeric`)
+#'  * `length(xform) == length(cols)` and unnamed: applied to corresponding index columns
+#'  * `names(xform)` contains all `cols`: applied to columns by name
 #'
-#' @return a `data.table`, with distinct reference is `data` argument was already a `data.table`,
-#' keyed on `reference_date`
-localizer <- function(data, datecols = c("reference_date", "report_date")) {
+#' @details This function combines several standardization steps:
+#'  * coercion to `data.table` and creating of new reference
+#'  * confirmation of column presence (`cols` argument)
+#'  * optionally, transformation of those `cols`, by `xform` iff non-`NULL`
+#'  * [setkeyv()]ing the resulting `data.table` by `cols`
+#'
+#' @return `data.table`, with distinct reference from `data`,
+#    ordered by optionally transformed `cols`
+localizer <- function(
+  data,
+  cols = c("reference_date", "report_date"),
+  xform = as.IDate
+) {
+  # coerce to [and copy, if already one] data.table
+  ret <- as.data.table(data)
+  # confirm column presence
+  check_cols(ret, cols)
 
-  ret <- data |> as.data.table()
+  # if there are transforms
+  if (!is.null(xform)) {
+    if (length(xform) == 1) { # if one, apply to all cols
+      if (is.list(xform)) xform <- xform[[1]]
+      ret <- ret[,
+        c(cols) := lapply(.SD, xform),
+        .SDcols = cols
+      ]
+    } else if (!is.null(names(xform))) { # if named, apply them by name
+      if (setdiff(cols, names(xform)) != 0) stop("`xform` and `cols` mis-match.")
+      for (col in cols) ret[[col]] <- xform[[col]](ret[[col]])
+    } else if (length(xform) == length(cols)) { # if same length, apply them by position
+      for (i in seq_along(cols)) ret[[col]] <- xform[[i]](ret[[col]])
+    } else stop("`xform` and `cols` mis-match.") # TODO better error msg
+  }
 
-  # TODO more generic error message
-  stopifnot(
-    "`data` must have columns 'reference_date', 'report_date'" =
-    length(intersect(colnames(ret), datecols)) == length(datecols)
-  )
+  return(setkeyv(ret, cols))
 
-  # TODO replace w/ 1.14.3 syntax when available
-  return({ ret |> data.table::copy() }[,
-    c(datecols) := .SD |> lapply(as.IDate), .SDcols = datecols
-  ] |> setkey(reference_date))
 }
-
