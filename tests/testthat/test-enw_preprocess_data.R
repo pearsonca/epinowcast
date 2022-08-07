@@ -39,7 +39,7 @@ test_that("Preprocessing produces expected output when excluding and using a
   expect_equal(pobs$max_delay[[1]], 10)
 })
 
-test_that("Preprocessing hanbdles groups as expected", {
+test_that("Preprocessing handles groups as expected", {
   pobs <- enw_preprocess_data(
     germany_covid19_hosp,
     by = c("location", "age_group")
@@ -52,7 +52,7 @@ test_that("Preprocessing hanbdles groups as expected", {
   expect_equal(pobs$max_delay[[1]], 20)
 })
 
-test_that("enw_preprocess_data hasn't changed compared to saved examle data", {
+test_that("enw_preprocess_data hasn't changed compared to saved example data", {
   nat_germany_hosp <- enw_filter_report_dates(
     nat_germany_hosp,
     latest_date = "2021-10-01"

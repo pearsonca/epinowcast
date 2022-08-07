@@ -21,18 +21,36 @@ enw_metadata <- function(obs, target_date = "reference_date") {
   return(metaobs[])
 }
 
-#' @title add common metadata variables
+#' @title Add common metadata variables
 #'
-#' @description annotates time series data with commonly required data
+#' @description If not already present, annotates time series data with metadata
+#' commonly used in models: day of week, and days, weeks, and months since start
+#' of time series.
 #'
-#' @param metaobs raw meta data for observations, coerceable via [data.table::as.data.table()].
-#'  must have a `date` column
-#' @param holidays_to A character string to assign to holidays when present.
-#' Replaces the day of the week and defaults to Sunday.
-#' @param holidays an optional vector of items coerceable via [data.table::as.IDate()]
+#' @param metaobs Raw data, coerceable via [data.table::as.data.table()].
+#'  Coerced object must have [Dates] column corresponding to `datecol` name.
+#'
+#' @param holidays_to A character string to assign to holidays, when `holidays`
+#' argument present. Replaces the `day_of_week` column value
+#'
+#' @param holidays Optionally, a vector of [Date]s or elements coerceable to
+#' [Date]s via [data.table::as.IDate()]. The `day_of_week` column will be set
+#' to `holidays_to` for these dates.
+#'
+#' @param datecol The column in `metaobs` corresponding to pertinent dates.
+#'
+#' @details Effects models often need to include covariates for time-based
+#' features, such as day of the week (e.g. to reflect different care-seeking
+#' and/or reporting behavior).
+#'
+#' This function is called from within [enw_preprocess_data()] to systematically
+#' annotate `metaobs` with these commonly used metadata, if not already present.
+#'
+#' However, it can also be used directly on other data.
 #'
 #' @return a copy of the `metaobs` input, with additional columns:
-#'  * `day_of_week`, a factor of values as output from [weekday()] and possibly as `holiday_to` if distinct from weekdays values
+#'  * `day_of_week`, a factor of values as output from [weekday()] and
+#'  possibly as `holiday_to` if distinct from weekdays values
 #'  * `day`, numeric, 0 based from start of time series
 #'  * `week`, numeric, 0 based from start of time series
 #'  * `month`, numeric, 0 based from start of time series
@@ -40,41 +58,90 @@ enw_metadata <- function(obs, target_date = "reference_date") {
 #' @family preprocess
 #' @export
 #' @importFrom data.table as.data.table
+#' @importFrom lubridate week month
+#' @examples
+#'
+#' # make some example date
+#' nat_germany_hosp <- subset(
+#'   epinowcast::germany_covid19_hosp,
+#'   location == "DE" & age_group == "80+"
+#' )[1:40]
+#'
+#' basemeta <- epinowcast::enw_add_metaobs_features(
+#'   nat_germany_hosp,
+#'   datecol = "report_date"
+#' )
+#' basemeta
+#'
+#' # with holidays - n.b.: holidays not found are silently ignored
+#' holidaymeta <- epinowcast::enw_add_metaobs_features(
+#'   nat_germany_hosp,
+#'   datecol = "report_date",
+#'   holidays_to = "Holiday",
+#'   holidays = c(
+#'     "2021-04-04", "2021-04-05",
+#'     "2021-05-01", "2021-05-13",
+#'     "2021-05-24"
+#'   )
+#' )
+#' holidaymeta
+#' subset(holidaymeta, day_of_week == "Holiday")
 enw_add_metaobs_features <- function(
   metaobs,
   holidays_to = "Sunday",
   holidays,
-  ...
+  datecol = "date"
 ) {
-  metaobs <- data.table::copy(metaobs)
-  if (is.null(metaobs$date)) stop("`metaobs` does not have a column `date`.")
+  metaobs <- data.table::as.data.table(metaobs)
+  if (is.null(metaobs[[datecol]])) {
+    stop(sprintf("metaobs does not have datecol '%s'.", datecol))
+  } else if (!is.Date(metaobs[[datecol]])) {
+    stop(sprintf("metaobs column '%s' is not a Date.", datecol))
+  }
 
-  # add days of week
-  metaobs[, day_of_week := weekdays(date) ]
+  # if not present, add day_of_week
+  if (is.null(metaobs$day_of_week)) {
+    metaobs[, day_of_week := weekdays(get(datecol))]
+  }
 
   # set holidays to associated day_of_week
   if (!missing(holidays) && (length(holidays) > 0)) {
     holidays <- as.IDate(holidays, optional = TRUE)
-    if (any(is.na(holidays))) stop(sprintf("Failed to parse holidays; first failure at index %i.", which.max(is.na(holidays))))
-    metaobs[date %in% holidays, day_of_week := holidays_to ]
+    if (any(is.na(holidays))) {
+      stop(
+        sprintf(
+          "Failed to parse holidays; first failure at index %i.",
+          which.max(is.na(holidays))
+        )
+      )
+    }
+    metaobs[get(datecol) %in% holidays, day_of_week := holidays_to]
   }
 
-  # make day of week a factor
-  metaobs[, day_of_week := factor(day_of_week) ]
+  # make day_of_week a factor
+  metaobs[, day_of_week := factor(day_of_week)]
 
-  zerobase <- function(x) x - min(x)
+  # function for transforming numbers to be referenced from 0
+  zerobase <- function(x) {
+    return(x - min(x))
+  }
 
-  # add day / week / month features
-  metaobs[,
-    c("day", "week", "month") :=
-    lapply(
+  # only compute columns not already present
+  tarcols <- setdiff(c("day", "week", "month"), colnames(metaobs))
+  if (length(tarcols)) {
+    # transforms associated with those columns
+    xforms <- list(
+      day = as.numeric, week = lubridate::week, month = lubridate::month
+    )[tarcols]
+
+    # add tarcol features
+    metaobs[, c(tarcols) :=
       lapply(
-        .(as.numeric, lubridate::week, lubridate::month),
-        do.call, .(date)
-      ),
-      zerobase
-    )
-  ]
+        lapply(xforms, do.call, .(get(datecol))),
+        zerobase
+      )
+    ]
+  }
 
   return(metaobs[])
 }
@@ -722,8 +789,9 @@ enw_construct_data <- function(obs, new_confirm, latest, missing_reference,
 #' that this is zero indexed and so includes the reference date and
 #' `max_delay - 1` other days.
 #'
-#' @param ... other arguments to [enw_add_metaobs_features()],
-#'   e.g. `holidays`
+#' @param ... Other arguments to [enw_add_metaobs_features()],
+#'   e.g. `holidays`, which sets commonly used metadata
+#'   (e.g. day of week, days since start of time series)
 #'
 #' @return A data.table containing processed observations as a series of nested
 #' data frames as well as variables containing metadata. These are:
